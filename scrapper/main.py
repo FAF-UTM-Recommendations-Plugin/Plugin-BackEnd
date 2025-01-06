@@ -1,82 +1,81 @@
-
 import requests
 from bs4 import BeautifulSoup
 from sentence_transformers import SentenceTransformer
-import json
 import time
-from elasticsearch import Elasticsearch
+from opensearchpy import OpenSearch
 
-es = Elasticsearch("http://localhost:9200")
+# Connect to OpenSearch
+client = OpenSearch(
+    hosts=[{"host": "localhost", "port": 9200}],
+    http_auth=("admin", "admin"), 
+)
+
+# Index name
+index_name = "news"
+
+# Create the index with mappings if it doesn't exist
+if not client.indices.exists(index=index_name):
+    mapping = {
+        "mappings": {
+            "properties": {
+                "url": {"type": "keyword"},
+                "title": {"type": "text"},
+                "text": {"type": "text"},
+                "embedding": {"type": "dense_vector", "dims": 384},  # Adjust "dims" based on your model
+            }
+        }
+    }
+    client.indices.create(index=index_name, body=mapping)
+    print(f"Index '{index_name}' created.")
 
 # Load embedding model
 model = SentenceTransformer('all-MiniLM-L6-v2')
 
 def get_articles(url):
-
     # Send a GET request to the webpage
     response = requests.get(url)
-
-    # Check if the request was successful
     if response.status_code == 200:
-        # Parse the HTML content using BeautifulSoup
         soup = BeautifulSoup(response.content, 'html.parser')
-        
-        # Find all links to articles (adjust the selector based on the structure of the website)
-        article_links = soup.find_all('a', href=True, class_='list-item__link-image') 
-        
-        # Extract the href attributes and store them in a list
+        article_links = soup.find_all('a', href=True, class_='list-item__link-image')  # Adjust class as needed
         links = [link['href'] for link in article_links]
-        
         return links
-
-        # Print the extracted links
-        #print("Article Links:")
-        #for i, link in enumerate(links, start=1):
-            #print(f"{i}: {link}")
-
     else:
         print(f"Failed to fetch the webpage. Status code: {response.status_code}")
-
 
 def prep_article(url):
     # Send a GET request to the webpage
     response = requests.get(url)
-
-    # Check if the request was successful
     if response.status_code == 200:
-        # Parse the HTML content using BeautifulSoup
         soup = BeautifulSoup(response.content, 'html.parser')
-        
-        # Find the article content (this selector depends on the website's structure)
-        article = soup.find('div', class_='single-post__content wpb_text_column')  # Update the class name as needed
-
-        # Find title of the article
+        article = soup.find('div', class_='single-post__content wpb_text_column')  # Adjust class name as needed
         title = soup.find('span', class_='inner-title').get_text(strip=True)
 
-        #print(article)
-        # Extract text from the article
         if article:
             text = article.get_text(strip=True, separator="\n")
-            # Remove commas, dots, and newline characters
             edited_text = text.replace(",", "").replace(".", "").replace("\n", "")
-            
-            # Embedding the article text
             embedding = model.encode([edited_text]).tolist()
 
             return {
                 "url": url,
                 "title": title,
                 "text": edited_text,
-                "embedding": embedding
+                "embedding": embedding,
             }
-            
-            #print("Edited Article Text:")
-            #print(edited_text)
         else:
             print("Could not find the article content.")
     else:
         print(f"Failed to fetch the webpage. Status code: {response.status_code}")
 
+def article_exists(url):
+    # Check if the article with the given URL already exists
+    query = {"query": {"term": {"url": url}}}
+    response = client.search(index=index_name, body=query)
+    return response["hits"]["total"]["value"] > 0
+
+def index_article(article):
+    # Index the article into OpenSearch
+    client.index(index=index_name, body=article)
+    print(f"Indexed article: {article['title']}")
 
 if __name__ == "__main__":
     # URL of the news listing page
@@ -84,13 +83,14 @@ if __name__ == "__main__":
     articles = get_articles(url)
 
     for link in articles:
-        
-        print(link)
-        prepped_article = prep_article(link)
+        print(f"Processing: {link}")
+        if not article_exists(link):
+            prepped_article = prep_article(link)
+            if prepped_article:
+                index_article(prepped_article)
+            else:
+                print(f"Failed to process article: {link}")
+        else:
+            print(f"Article already exists: {link}")
 
-        # Index the article in Elasticsearch
-        #es.index(index="news", body=prepped_article)
-
-        
-        time.sleep(2)  # Sleep for 2 seconds to avoid overwhelming the server
-        
+        time.sleep(2)  # Sleep to avoid overwhelming the server

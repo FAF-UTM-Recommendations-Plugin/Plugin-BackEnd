@@ -1,0 +1,26 @@
+services:
+  opensearch:
+    image: opensearchproject/opensearch:latest
+    container_name: opensearch
+    environment:
+      - discovery.type=single-node
+      - plugins.security.disabled=true
+    ports:
+      - "9200:9200"
+      - "9600:9600"
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+
+  app:
+    build:
+      context: ./scrapper
+      dockerfile: Dockerfile
+    container_name: python-app
+    environment:
+      - OPENSEARCH_HOST=http://opensearch:9200
+    depends_on:
+      - opensearch
+
+volumes:
+  opensearch-data:
+    driver: local
