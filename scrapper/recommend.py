@@ -27,7 +27,16 @@ index_name = "articles"
 
 
 """ Example query text """
-user_query = "Război in Ucraina"
+user_query = '''
+
+Țintașa Anna Dulce a obținut medalia de argint la turneul „ISSF Grand Prix Junior” din Slovenia în proba pistol aer comprimat, 10 metri. Ea a înregistrat rezultatul de 232,4 puncte, anunță Comitetul Național Olimpic și Sportiv (CNOS).
+
+Pe primul loc s-a clasat reprezentanta Georgiei, Salome Prodiashvili, iar podiumul a fost completat de Mariam Abramishvili, de asemenea din Georgia.
+
+Anna Dulce este o multiplă câștigătoare a diferitor turnee internaționale, fiind specializată în proba de pistol aer comprimat, 10 metri.
+
+Anterior, sportiva a obținut locul 4 la Cupa Mondială. În 2022 a câștigat două medalii de bronz la Junior World Cup 2022 & Junior European Championship în 2022.
+'''
 
 """ Embedding the query by using the same model """
 query_embedding = model.encode((user_query))

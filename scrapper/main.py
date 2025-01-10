@@ -1,6 +1,7 @@
 from bs4 import BeautifulSoup
 import requests
 from sentence_transformers import SentenceTransformer
+import time
 
 model_name = "all-MiniLM-L6-v2"
 model = SentenceTransformer(model_name)
@@ -42,15 +43,6 @@ def prep_article(url):
         return None
 
 
-url = "https://www.zdg.md/stiri/"
-article_links = get_articles(url)
-
-article_data = []
-for link in article_links:
-  print(f"Processing: {link}")
-  article = prep_article(link)
-  if article:
-    article_data.append(article)
 
 from opensearchpy import OpenSearch
 
@@ -110,11 +102,49 @@ else:
     print(f"Index '{index_name}' already exists.")
 
 
-for article in article_data:
-    res = client.index(
-        index=index_name,
-        body=article,
-        refresh=True
-    )
 
 
+
+def article_exists(client, index_name, url):
+    """Checks if an article with the given URL already exists in the index."""
+    query = {
+        "query": {
+            "term": {
+                "url.keyword": url.rstrip('/')  # Match URL exactly
+            }
+        }
+    }
+    response = client.search(index=index_name, body=query)
+    return response['hits']['total']['value'] > 0
+
+# Initialize OpenSearch client
+client = get_client()
+
+# Date ranges for scraping articles
+years = [2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024]
+months = ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"]
+
+article_data = []
+for year in years:
+    for month in months:
+        url = f"https://www.zdg.md/{year}/{month}/?cat=4"
+        article_links = get_articles(url)
+        print(f"Year: {year}, Month: {month}, Articles found: {len(article_links)}")
+        time.sleep(2)  # Avoid overwhelming the server
+
+        for link in article_links:
+            print(f"Processing: {link}")
+            # Check if the article already exists
+            if article_exists(client, index_name, link):
+                print(f"Article already exists in the index: {link}")
+                continue
+
+            # Prepare and add the article if it doesn't exist
+            article = prep_article(link)
+            if article:
+                res = client.index(
+                    index=index_name,
+                    body=article,
+                    refresh=True
+                )
+                print(f"Indexed article: {link}")
